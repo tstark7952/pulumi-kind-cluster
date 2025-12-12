@@ -29,7 +29,7 @@ func main() {
 		}
 		disk := conf.GetInt("disk")
 		if disk == 0 {
-			disk = 50
+			disk = 500
 		}
 		clusterName := conf.Get("clusterName")
 		if clusterName == "" {
@@ -82,7 +82,7 @@ nodes:
 
 		// Only create dependencies when truly necessary - VM needs dirs and config
 		limaVm, err := local.NewCommand(ctx, "lima-vm", &local.CommandArgs{
-			Create: pulumi.String(fmt.Sprintf("limactl start --tty=false --name %s template://docker --cpus %d --memory %d --disk %d --vm-type vz",
+			Create: pulumi.String(fmt.Sprintf("limactl start --tty=false --name %s template:docker --cpus %d --memory %d --disk %d --vm-type vz",
 				vmName, cpus, memory, disk)),
 			Delete: pulumi.String(fmt.Sprintf(`
 				# First, try to delete any Kind cluster that might be running in this VM
@@ -183,38 +183,54 @@ EOF
 			Create: pulumi.String(fmt.Sprintf(`
 				# Create .kube directory if it doesn't exist
 				mkdir -p %s/.kube
-				
+
 				# Export kubeconfig to a specific file
 				echo "Exporting kubeconfig to %s"
 				DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock kind export kubeconfig --name %s --kubeconfig %s
-				
+
 				# Make sure the kubeconfig file is accessible
 				chmod 600 %s
-				
+
 				# Create a symlink to the default location if it doesn't exist or is empty
 				if [ ! -f %s ] || [ ! -s %s ]; then
 					ln -sf %s %s
 					echo "Created symlink from %s to %s"
 				fi
-				
+
 				# Export the KUBECONFIG environment variable for this session
 				export KUBECONFIG=%s
-				
+
 				# Fix the kubeconfig if it has localhost references (often causes connection issues)
 				# Replace localhost with 127.0.0.1 which is more reliable
 				sed -i.bak 's|server: https://localhost:|server: https://127.0.0.1:|g' %s
-				
+
+				# Automatically set kubectl context to the new cluster
+				kubectl config use-context kind-%s
+
 				# Verify the kubeconfig is valid
 				echo "Testing kubectl configuration..."
 				kubectl version --client || true
+				echo "Current kubectl context: $(kubectl config current-context)"
 			`, homeDir, kubeconfigPath, vmName, clusterName, kubeconfigPath,
 				kubeconfigPath, defaultKubeconfigPath, defaultKubeconfigPath,
 				kubeconfigPath, defaultKubeconfigPath, kubeconfigPath, defaultKubeconfigPath,
-				kubeconfigPath, kubeconfigPath)),
+				kubeconfigPath, kubeconfigPath, clusterName)),
 			Delete: pulumi.String(fmt.Sprintf(`
+				# Remove kubectl context
+				kubectl config delete-context kind-%s 2>/dev/null || true
+				kubectl config delete-cluster kind-%s 2>/dev/null || true
+				kubectl config delete-user kind-%s 2>/dev/null || true
+
 				# Remove the kubeconfig file during cleanup
 				rm -f %s 2>/dev/null || true
-			`, kubeconfigPath)),
+				rm -f %s.bak 2>/dev/null || true
+
+				# Remove symlink if it points to our config
+				if [ -L %s ] && [ "$(readlink %s)" = "%s" ]; then
+					rm -f %s 2>/dev/null || true
+				fi
+			`, clusterName, clusterName, clusterName, kubeconfigPath, kubeconfigPath,
+				defaultKubeconfigPath, defaultKubeconfigPath, kubeconfigPath, defaultKubeconfigPath)),
 		}, pulumi.DependsOn([]pulumi.Resource{createCluster}))
 		if err != nil {
 			return err
@@ -233,7 +249,7 @@ EOF
 					echo "export KUBECONFIG=%s" >> ~/.bashrc
 					echo "Updated .bashrc"
 				fi
-				
+
 				# Create a convenient activation script
 				mkdir -p ~/bin
 				cat <<EOF > ~/bin/use-k8s.sh
@@ -246,6 +262,15 @@ EOF
 				echo "Created activation script at ~/bin/use-k8s.sh"
 			`, kubeconfigPath, kubeconfigPath, kubeconfigPath, kubeconfigPath,
 				kubeconfigPath, clusterName)),
+			Delete: pulumi.String(fmt.Sprintf(`
+				# Remove KUBECONFIG from shell profiles
+				sed -i.bak '/export KUBECONFIG=%s/d' ~/.zshrc 2>/dev/null || true
+				sed -i.bak '/export KUBECONFIG=%s/d' ~/.bashrc 2>/dev/null || true
+				rm -f ~/.zshrc.bak ~/.bashrc.bak 2>/dev/null || true
+
+				# Remove activation script
+				rm -f ~/bin/use-k8s.sh 2>/dev/null || true
+			`, kubeconfigPath, kubeconfigPath)),
 		}, pulumi.DependsOn([]pulumi.Resource{exportKubeconfig}))
 		if err != nil {
 			return err

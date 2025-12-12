@@ -61,7 +61,7 @@ brew install pulumi go lima kind kubectl
    ```bash
    pulumi config set cpus 8              # Default: 8
    pulumi config set memory 16           # Default: 16 (GB)
-   pulumi config set disk 50             # Default: 50 (GB)
+   pulumi config set disk 500            # Default: 500 (GB)
    pulumi config set vmName myk8s-docker # Default: myk8s-docker
    pulumi config set clusterName myk8s   # Default: myk8s
    ```
@@ -89,7 +89,7 @@ brew install pulumi go lima kind kubectl
 | `vmName` | Name of the Lima VM | `myk8s-docker` |
 | `cpus` | Number of CPUs for the VM | `8` |
 | `memory` | Memory in GB for the VM | `16` |
-| `disk` | Disk size in GB for the VM | `50` |
+| `disk` | Disk size in GB for the VM | `500` |
 | `clusterName` | Name of the Kind cluster | `myk8s` |
 
 ## What Gets Created
@@ -110,7 +110,15 @@ The Pulumi program creates the following resources:
 
 ## Features
 
-### Automatic Cleanup
+### Automatic Context Switching
+
+The deployment automatically configures and switches to the correct contexts:
+- **Docker context** - Automatically set to `lima-myk8s-docker`
+- **kubectl context** - Automatically set to `kind-myk8s`
+
+You can immediately use `docker` and `kubectl` commands without manual configuration.
+
+### Complete Cleanup
 
 All resources have proper deletion handlers. To destroy the entire infrastructure:
 
@@ -118,12 +126,17 @@ All resources have proper deletion handlers. To destroy the entire infrastructur
 pulumi destroy
 ```
 
-This will:
-- Delete the Kind cluster
-- Stop and remove the Lima VM
-- Remove the launchd service
-- Clean up Docker contexts
-- Remove configuration files
+This will completely remove:
+- Kind cluster
+- Lima VM and all associated files
+- launchd service
+- Docker context (`lima-myk8s-docker`)
+- kubectl context, cluster, and user entries (`kind-myk8s`)
+- Kubeconfig files and symlinks
+- Shell profile entries (KUBECONFIG exports)
+- Helper scripts (`~/bin/use-k8s.sh`)
+
+After `pulumi destroy`, your system is restored to its original state with no leftover configurations.
 
 ### Persistent Storage
 
