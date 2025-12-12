@@ -236,18 +236,28 @@ EOF
 			return err
 		}
 
-		// Add kubeconfig to shell profiles to make it persistent
+		// Add kubeconfig and docker context to shell profiles to make it persistent
 		updateProfiles, err := local.NewCommand(ctx, "update-shell-profiles", &local.CommandArgs{
 			Create: pulumi.String(fmt.Sprintf(`
 				# Add KUBECONFIG to shell profiles
 				echo "Updating shell profiles..."
 				if ! grep -q "export KUBECONFIG=%s" ~/.zshrc 2>/dev/null; then
 					echo "export KUBECONFIG=%s" >> ~/.zshrc
-					echo "Updated .zshrc"
+					echo "Updated .zshrc with KUBECONFIG"
 				fi
 				if ! grep -q "export KUBECONFIG=%s" ~/.bashrc 2>/dev/null; then
 					echo "export KUBECONFIG=%s" >> ~/.bashrc
-					echo "Updated .bashrc"
+					echo "Updated .bashrc with KUBECONFIG"
+				fi
+
+				# Add Docker context to shell profiles
+				if ! grep -q "export DOCKER_CONTEXT=lima-%s" ~/.zshrc 2>/dev/null; then
+					echo "export DOCKER_CONTEXT=lima-%s" >> ~/.zshrc
+					echo "Updated .zshrc with DOCKER_CONTEXT"
+				fi
+				if ! grep -q "export DOCKER_CONTEXT=lima-%s" ~/.bashrc 2>/dev/null; then
+					echo "export DOCKER_CONTEXT=lima-%s" >> ~/.bashrc
+					echo "Updated .bashrc with DOCKER_CONTEXT"
 				fi
 
 				# Create a convenient activation script
@@ -255,22 +265,31 @@ EOF
 				cat <<EOF > ~/bin/use-k8s.sh
 #!/bin/bash
 export KUBECONFIG=%s
+export DOCKER_CONTEXT=lima-%s
 echo "Kubernetes context set to %s"
+echo "Docker context set to lima-%s"
 kubectl cluster-info
+docker context show
 EOF
 				chmod +x ~/bin/use-k8s.sh
 				echo "Created activation script at ~/bin/use-k8s.sh"
 			`, kubeconfigPath, kubeconfigPath, kubeconfigPath, kubeconfigPath,
-				kubeconfigPath, clusterName)),
+				vmName, vmName, vmName, vmName,
+				kubeconfigPath, vmName, clusterName, vmName)),
 			Delete: pulumi.String(fmt.Sprintf(`
 				# Remove KUBECONFIG from shell profiles
 				sed -i.bak '/export KUBECONFIG=%s/d' ~/.zshrc 2>/dev/null || true
 				sed -i.bak '/export KUBECONFIG=%s/d' ~/.bashrc 2>/dev/null || true
+
+				# Remove DOCKER_CONTEXT from shell profiles
+				sed -i.bak '/export DOCKER_CONTEXT=lima-%s/d' ~/.zshrc 2>/dev/null || true
+				sed -i.bak '/export DOCKER_CONTEXT=lima-%s/d' ~/.bashrc 2>/dev/null || true
+
 				rm -f ~/.zshrc.bak ~/.bashrc.bak 2>/dev/null || true
 
 				# Remove activation script
 				rm -f ~/bin/use-k8s.sh 2>/dev/null || true
-			`, kubeconfigPath, kubeconfigPath)),
+			`, kubeconfigPath, kubeconfigPath, vmName, vmName)),
 		}, pulumi.DependsOn([]pulumi.Resource{exportKubeconfig}))
 		if err != nil {
 			return err

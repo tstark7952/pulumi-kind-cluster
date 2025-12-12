@@ -17,15 +17,17 @@ This infrastructure-as-code solution creates a fully-functional local Kubernetes
 
 ```
 macOS Host
-├── Lima VM (Ubuntu 24.04, VZ driver)
+├── Lima VM (Ubuntu 24.04.3 LTS, VZ driver)
 │   └── Docker Engine
-│       └── Kind Cluster
+│       └── Kind Cluster (Kind node images run Debian)
 │           ├── Control Plane Node (tainted)
 │           ├── Worker Node 1
 │           ├── Worker Node 2
 │           └── Worker Node 3
 └── Calico CNI (VXLAN mode)
 ```
+
+**Note:** The Lima VM runs **Ubuntu 24.04.3 LTS (Noble Numbat)**. The Kubernetes nodes run inside Kind containers which use Debian-based node images by design. This is standard for Kind and doesn't affect functionality.
 
 ## Prerequisites
 
@@ -113,10 +115,17 @@ The Pulumi program creates the following resources:
 ### Automatic Context Switching
 
 The deployment automatically configures and switches to the correct contexts:
-- **Docker context** - Automatically set to `lima-myk8s-docker`
+- **Docker context** - Automatically set to `lima-myk8s-docker` via `DOCKER_CONTEXT` environment variable
 - **kubectl context** - Automatically set to `kind-myk8s`
 
-You can immediately use `docker` and `kubectl` commands without manual configuration.
+Both contexts are persisted in your shell profiles (`.zshrc`, `.bashrc`), so new terminal sessions will automatically use the correct contexts.
+
+To activate in your current shell:
+```bash
+source ~/bin/use-k8s.sh
+# or
+source ~/.zshrc  # or ~/.bashrc
+```
 
 ### Complete Cleanup
 
