@@ -1,0 +1,3 @@
+name: myk8s-cluster
+runtime: go
+description: A local Kubernetes cluster setup using Lima VM and Kind
