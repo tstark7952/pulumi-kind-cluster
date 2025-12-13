@@ -1,3 +1,23 @@
 name: myk8s-cluster
 runtime: go
-description: A local Kubernetes cluster setup using Lima VM and Kind
+description: Production-ready Kubernetes cluster using Kind in Lima VM with comprehensive health checks
+
+config:
+  vmName:
+    description: Name of the Lima VM
+    default: myk8s-docker
+  cpus:
+    description: Number of CPUs for the Lima VM
+    default: 8
+  memory:
+    description: Memory in GB for the Lima VM
+    default: 16
+  disk:
+    description: Disk size in GB for the Lima VM
+    default: 500
+  clusterName:
+    description: Name of the Kubernetes cluster
+    default: myk8s
+  calicoVersion:
+    description: Version of Calico CNI to install
+    default: v3.29.1

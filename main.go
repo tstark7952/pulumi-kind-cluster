@@ -82,23 +82,71 @@ nodes:
 
 		// Only create dependencies when truly necessary - VM needs dirs and config
 		limaVm, err := local.NewCommand(ctx, "lima-vm", &local.CommandArgs{
-			Create: pulumi.String(fmt.Sprintf("limactl start --tty=false --name %s template:docker --cpus %d --memory %d --disk %d --vm-type vz",
-				vmName, cpus, memory, disk)),
+			Create: pulumi.String(fmt.Sprintf(`
+				# Check if VM already exists
+				if limactl list --format json | grep -q '"name":"%s"'; then
+					echo "VM %s already exists, checking status..."
+
+					# Check if VM is running
+					if limactl list --format json | grep -A 5 '"name":"%s"' | grep -q '"status":"Running"'; then
+						echo "VM %s is already running"
+					else
+						echo "VM %s exists but not running, starting..."
+						limactl start %s
+					fi
+				else
+					echo "Creating new VM %s..."
+					limactl start --tty=false --name %s template:docker --cpus %d --memory %d --disk %d --vm-type vz
+				fi
+
+				# Wait for VM to be fully ready with retry logic
+				max_attempts=30
+				attempt=0
+				while [ $attempt -lt $max_attempts ]; do
+					if limactl list --format json | grep -A 5 '"name":"%s"' | grep -q '"status":"Running"'; then
+						echo "VM %s is ready"
+						break
+					fi
+					echo "Waiting for VM to be ready... (attempt $((attempt+1))/$max_attempts)"
+					sleep 2
+					attempt=$((attempt+1))
+				done
+
+				if [ $attempt -eq $max_attempts ]; then
+					echo "ERROR: VM failed to start after $max_attempts attempts"
+					exit 1
+				fi
+			`, vmName, vmName, vmName, vmName, vmName, vmName, vmName, vmName, cpus, memory, disk, vmName, vmName)),
 			Delete: pulumi.String(fmt.Sprintf(`
 				# First, try to delete any Kind cluster that might be running in this VM
 				DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock kind delete cluster --name %s 2>/dev/null || true
-				
+
 				# Stop the VM first (required before deletion)
+				echo "Stopping Lima VM %s..."
 				limactl stop %s 2>/dev/null || true
-				
+
+				# Wait for VM to stop
+				max_attempts=30
+				attempt=0
+				while [ $attempt -lt $max_attempts ]; do
+					if ! limactl list --format json | grep -A 5 '"name":"%s"' | grep -q '"status":"Running"'; then
+						echo "VM %s stopped successfully"
+						break
+					fi
+					echo "Waiting for VM to stop... (attempt $((attempt+1))/$max_attempts)"
+					sleep 2
+					attempt=$((attempt+1))
+				done
+
 				# Delete the VM with force flag to ensure it's removed
+				echo "Deleting Lima VM %s..."
 				limactl delete --force %s 2>/dev/null || true
-				
+
 				# Clean up any leftover sockets and temp files
 				rm -rf $HOME/.lima/%s/sock/* 2>/dev/null || true
-				
+
 				echo "Lima VM %s cleanup completed"
-			`, vmName, clusterName, vmName, vmName, vmName, vmName)),
+			`, vmName, clusterName, vmName, vmName, vmName, vmName, vmName, vmName, vmName, vmName)),
 		}, pulumi.DependsOn([]pulumi.Resource{createDirs, createKindConfig}))
 		if err != nil {
 			return err
@@ -164,12 +212,36 @@ EOF
 		// Create Kind cluster - depends on both plist and docker context
 		createCluster, err := local.NewCommand(ctx, "create-kind-cluster", &local.CommandArgs{
 			Create: pulumi.String(fmt.Sprintf(`
-				DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock kind create cluster --name %s --config %s
-			`, vmName, clusterName, kindConfigPath)),
+				export DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock
+
+				# Check if cluster already exists
+				if kind get clusters | grep -q "^%s$"; then
+					echo "Kind cluster '%s' already exists"
+				else
+					echo "Creating Kind cluster '%s'..."
+					kind create cluster --name %s --config %s
+				fi
+
+				# Verify cluster is accessible
+				if kind get clusters | grep -q "^%s$"; then
+					echo "Kind cluster '%s' verified successfully"
+				else
+					echo "ERROR: Failed to create or verify Kind cluster"
+					exit 1
+				fi
+			`, vmName, clusterName, clusterName, clusterName, clusterName, kindConfigPath, clusterName, clusterName)),
 			Delete: pulumi.String(fmt.Sprintf(`
+				export DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock
+
+				echo "Deleting Kind cluster '%s'..."
 				# Delete the Kind cluster
-				DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock kind delete cluster --name %s 2>/dev/null || true
-			`, vmName, clusterName)),
+				if kind get clusters 2>/dev/null | grep -q "^%s$"; then
+					kind delete cluster --name %s
+					echo "Kind cluster '%s' deleted successfully"
+				else
+					echo "Kind cluster '%s' not found, skipping deletion"
+				fi
+			`, vmName, clusterName, clusterName, clusterName, clusterName, clusterName)),
 		}, pulumi.DependsOn([]pulumi.Resource{createPlist, dockerContext}))
 		if err != nil {
 			return err
@@ -311,20 +383,42 @@ EOF
 			return err
 		}
 
-		// 2. Install Calico
+		// 2. Install Calico (latest stable version)
+		calicoVersion := "v3.29.1"
 		installCalico, err := local.NewCommand(ctx, "install-calico", &local.CommandArgs{
 			Create: pulumi.String(fmt.Sprintf(`
 				export KUBECONFIG=%s
-				echo "Installing Calico CNI..."
-				kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
+				echo "Installing Calico CNI %s..."
+
+				# Download and apply Calico manifest with retry logic
+				max_attempts=3
+				attempt=0
+				while [ $attempt -lt $max_attempts ]; do
+					if kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/%s/manifests/calico.yaml; then
+						echo "Calico manifest applied successfully"
+						break
+					fi
+					echo "Failed to apply Calico manifest, retrying... (attempt $((attempt+1))/$max_attempts)"
+					sleep 5
+					attempt=$((attempt+1))
+				done
+
+				if [ $attempt -eq $max_attempts ]; then
+					echo "ERROR: Failed to apply Calico manifest after $max_attempts attempts"
+					exit 1
+				fi
+
+				# Configure Calico for VXLAN mode (better for nested virtualization)
 				kubectl set env -n kube-system ds/calico-node CALICO_IPV4POOL_VXLAN=Always
 				kubectl set env -n kube-system ds/calico-node CALICO_IPV4POOL_IPIP=Off
-			`, kubeconfigPath)),
+
+				echo "Calico installation configured successfully"
+			`, kubeconfigPath, calicoVersion, calicoVersion)),
 			Delete: pulumi.String(fmt.Sprintf(`
 				export KUBECONFIG=%s
-				echo "Removing Calico CNI..."
-				kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml --ignore-not-found=true 2>/dev/null || true
-			`, kubeconfigPath)),
+				echo "Removing Calico CNI %s..."
+				kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/%s/manifests/calico.yaml --ignore-not-found=true 2>/dev/null || true
+			`, kubeconfigPath, calicoVersion, calicoVersion)),
 			Environment: pulumi.StringMap{
 				"KUBECONFIG": pulumi.String(kubeconfigPath),
 			},
@@ -384,51 +478,162 @@ EOF
 			return err
 		}
 
-		// Final verification
+		// Comprehensive health checks and final verification
 		_, err = local.NewCommand(ctx, "verify-cluster", &local.CommandArgs{
 			Create: pulumi.String(fmt.Sprintf(`
 				# Ensure KUBECONFIG is set
 				export KUBECONFIG=%s
-				
+
 				echo "====================================================================="
-				echo "Verifying Kubernetes cluster..."
-				
-				# Check if kubectl can connect to the cluster
-				if kubectl cluster-info; then
-					echo "✅ Successfully connected to Kubernetes cluster"
+				echo "🔍 Running Comprehensive Health Checks..."
+				echo "====================================================================="
+
+				# Health Check 1: Lima VM Status
+				echo ""
+				echo "1️⃣  Checking Lima VM status..."
+				if limactl list --format json | grep -A 5 '"name":"%s"' | grep -q '"status":"Running"'; then
+					echo "✅ Lima VM '%s' is running"
+					vm_status="PASS"
 				else
-					echo "❌ Failed to connect to Kubernetes cluster"
-					echo "Troubleshooting steps:"
-					echo "1. Check if cluster exists in Lima VM:"
-					DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock kind get clusters
-					
-					echo "2. Your kubeconfig is at: %s"
-					echo "3. Try running: source ~/bin/use-k8s.sh"
-					echo "4. Or explicitly: kubectl --kubeconfig=%s get nodes"
+					echo "❌ Lima VM '%s' is not running"
+					vm_status="FAIL"
 				fi
-				
-				# Show cluster resources
+
+				# Health Check 2: Docker Context
 				echo ""
-				echo "Kubernetes Nodes:"
-				kubectl get nodes -o wide
-				
+				echo "2️⃣  Checking Docker connectivity..."
+				export DOCKER_HOST=unix://$HOME/.lima/%s/sock/docker.sock
+				if docker ps >/dev/null 2>&1; then
+					echo "✅ Docker is accessible"
+					docker_status="PASS"
+				else
+					echo "❌ Docker is not accessible"
+					docker_status="FAIL"
+				fi
+
+				# Health Check 3: Kind Cluster
 				echo ""
-				echo "Kubernetes System Pods:"
-				kubectl -n kube-system get pods
-				
+				echo "3️⃣  Checking Kind cluster..."
+				if kind get clusters 2>/dev/null | grep -q "^%s$"; then
+					echo "✅ Kind cluster '%s' exists"
+					kind_status="PASS"
+				else
+					echo "❌ Kind cluster '%s' not found"
+					kind_status="FAIL"
+				fi
+
+				# Health Check 4: Kubernetes API
+				echo ""
+				echo "4️⃣  Checking Kubernetes API connectivity..."
+				if kubectl cluster-info >/dev/null 2>&1; then
+					echo "✅ Successfully connected to Kubernetes API"
+					k8s_api_status="PASS"
+				else
+					echo "❌ Failed to connect to Kubernetes API"
+					k8s_api_status="FAIL"
+				fi
+
+				# Health Check 5: Nodes Ready
+				echo ""
+				echo "5️⃣  Checking node status..."
+				total_nodes=$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')
+				ready_nodes=$(kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready" || echo "0")
+				if [ "$total_nodes" -eq "$ready_nodes" ] && [ "$total_nodes" -gt "0" ]; then
+					echo "✅ All nodes are ready ($ready_nodes/$total_nodes)"
+					nodes_status="PASS"
+				else
+					echo "⚠️  Some nodes are not ready ($ready_nodes/$total_nodes)"
+					nodes_status="WARN"
+				fi
+
+				# Health Check 6: System Pods
+				echo ""
+				echo "6️⃣  Checking system pods..."
+				total_pods=$(kubectl -n kube-system get pods --no-headers 2>/dev/null | wc -l | tr -d ' ')
+				running_pods=$(kubectl -n kube-system get pods --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+				if [ "$total_pods" -eq "$running_pods" ] && [ "$total_pods" -gt "0" ]; then
+					echo "✅ All system pods are running ($running_pods/$total_pods)"
+					pods_status="PASS"
+				else
+					echo "⚠️  Some system pods are not running ($running_pods/$total_pods)"
+					pods_status="WARN"
+				fi
+
+				# Health Check 7: Calico Status
+				echo ""
+				echo "7️⃣  Checking Calico CNI..."
+				calico_pods=$(kubectl -n kube-system get pods -l k8s-app=calico-node --no-headers 2>/dev/null | wc -l | tr -d ' ')
+				calico_ready=$(kubectl -n kube-system get pods -l k8s-app=calico-node --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+				if [ "$calico_pods" -eq "$calico_ready" ] && [ "$calico_pods" -gt "0" ]; then
+					echo "✅ Calico CNI is healthy ($calico_ready/$calico_pods pods ready)"
+					calico_status="PASS"
+				else
+					echo "⚠️  Calico CNI has issues ($calico_ready/$calico_pods pods ready)"
+					calico_status="WARN"
+				fi
+
+				# Health Check 8: CoreDNS Status
+				echo ""
+				echo "8️⃣  Checking CoreDNS..."
+				coredns_pods=$(kubectl -n kube-system get pods -l k8s-app=kube-dns --no-headers 2>/dev/null | wc -l | tr -d ' ')
+				coredns_ready=$(kubectl -n kube-system get pods -l k8s-app=kube-dns --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+				if [ "$coredns_pods" -eq "$coredns_ready" ] && [ "$coredns_pods" -gt "0" ]; then
+					echo "✅ CoreDNS is healthy ($coredns_ready/$coredns_pods pods ready)"
+					coredns_status="PASS"
+				else
+					echo "⚠️  CoreDNS has issues ($coredns_ready/$coredns_pods pods ready)"
+					coredns_status="WARN"
+				fi
+
+				# Summary
 				echo ""
 				echo "====================================================================="
-				echo "🎉 Setup complete! Your Kubernetes cluster is ready to use."
+				echo "📊 Health Check Summary"
+				echo "====================================================================="
+				echo "Lima VM:          $vm_status"
+				echo "Docker:           $docker_status"
+				echo "Kind Cluster:     $kind_status"
+				echo "Kubernetes API:   $k8s_api_status"
+				echo "Nodes:            $nodes_status"
+				echo "System Pods:      $pods_status"
+				echo "Calico CNI:       $calico_status"
+				echo "CoreDNS:          $coredns_status"
+				echo "====================================================================="
+
+				# Detailed cluster information
 				echo ""
-				echo "To use kubectl with this cluster, do ONE of the following:"
+				echo "📋 Cluster Details"
+				echo "====================================================================="
+				kubectl get nodes -o wide
+
+				echo ""
+				echo "📦 System Pods Status"
+				echo "====================================================================="
+				kubectl -n kube-system get pods -o wide
+
+				echo ""
+				echo "====================================================================="
+				echo "🎉 Setup Complete! Your Kubernetes cluster is ready to use."
+				echo "====================================================================="
+				echo ""
+				echo "📍 Connection Information:"
+				echo "  Cluster Name:    %s"
+				echo "  Lima VM Name:    %s"
+				echo "  Kubeconfig Path: %s"
+				echo ""
+				echo "🚀 Quick Start:"
 				echo "  1. In a new terminal: source ~/.bashrc  (or ~/.zshrc)"
 				echo "  2. In this terminal: export KUBECONFIG=%s"
-				echo "  3. Run the helper script: source ~/bin/use-k8s.sh"
+				echo "  3. Run helper script: source ~/bin/use-k8s.sh"
 				echo ""
-				echo "Cluster Name: %s"
-				echo "Lima VM Name: %s"
+				echo "🔧 Useful Commands:"
+				echo "  kubectl get nodes"
+				echo "  kubectl get pods -A"
+				echo "  kubectl create deployment nginx --image=nginx"
+				echo ""
 				echo "====================================================================="
-			`, kubeconfigPath, vmName, kubeconfigPath, kubeconfigPath, kubeconfigPath, clusterName, vmName)),
+			`, kubeconfigPath, vmName, vmName, vmName, vmName, clusterName, clusterName, clusterName,
+				clusterName, vmName, kubeconfigPath, kubeconfigPath)),
 			Environment: pulumi.StringMap{
 				"KUBECONFIG": pulumi.String(kubeconfigPath),
 			},

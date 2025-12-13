@@ -93,6 +93,7 @@ brew install pulumi go lima kind kubectl
 | `memory` | Memory in GB for the VM | `16` |
 | `disk` | Disk size in GB for the VM | `500` |
 | `clusterName` | Name of the Kind cluster | `myk8s` |
+| `calicoVersion` | Calico CNI version to install | `v3.29.1` |
 
 ## What Gets Created
 
@@ -111,6 +112,28 @@ The Pulumi program creates the following resources:
 11. **Helper Script** - `~/bin/use-k8s.sh` for easy cluster activation
 
 ## Features
+
+### Idempotent Deployments
+
+The infrastructure is fully idempotent - you can run `pulumi up` multiple times safely:
+- Detects existing Lima VMs and reuses them
+- Checks for existing Kind clusters before creation
+- Handles partial failures gracefully with retry logic
+- VM startup waits with timeout and retry mechanisms
+
+### Comprehensive Health Checks
+
+After deployment, the system runs 8 comprehensive health checks:
+1. Lima VM status verification
+2. Docker connectivity test
+3. Kind cluster existence check
+4. Kubernetes API connectivity
+5. Node readiness status
+6. System pods health
+7. Calico CNI verification
+8. CoreDNS health check
+
+Each check provides clear PASS/WARN/FAIL status with detailed diagnostics.
 
 ### Automatic Context Switching
 
