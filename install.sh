@@ -45,9 +45,17 @@ if [[ "$ACTION" == "destroy" ]]; then
     # Check for passphrase file
     if [[ ! -f ".pulumi-passphrase" ]]; then
         echo "🔐 Pulumi passphrase file not found"
-        echo "Enter your Pulumi passphrase:"
-        read -sp "Passphrase: " PASSPHRASE
-        echo ""
+
+        # Check if passphrase is provided via environment variable
+        if [[ -n "$PULUMI_PASSPHRASE" ]]; then
+            echo "Using passphrase from PULUMI_PASSPHRASE environment variable"
+            PASSPHRASE="$PULUMI_PASSPHRASE"
+        else
+            echo "Enter your Pulumi passphrase:"
+            read -sp "Passphrase: " PASSPHRASE
+            echo ""
+        fi
+
         echo -n "$PASSPHRASE" > .pulumi-passphrase
         chmod 600 .pulumi-passphrase
     fi
@@ -116,10 +124,17 @@ else
     echo ""
     echo "🔐 Pulumi Configuration"
     echo "=================================================="
-    echo "Enter a passphrase for Pulumi state encryption"
-    echo "(This will be saved to .pulumi-passphrase)"
-    read -sp "Passphrase: " PASSPHRASE
-    echo ""
+
+    # Check if passphrase is provided via environment variable
+    if [[ -n "$PULUMI_PASSPHRASE" ]]; then
+        echo "Using passphrase from PULUMI_PASSPHRASE environment variable"
+        PASSPHRASE="$PULUMI_PASSPHRASE"
+    else
+        echo "Enter a passphrase for Pulumi state encryption"
+        echo "(This will be saved to .pulumi-passphrase)"
+        read -sp "Passphrase: " PASSPHRASE
+        echo ""
+    fi
 
     # Save passphrase
     echo -n "$PASSPHRASE" > .pulumi-passphrase

@@ -52,14 +52,19 @@ brew install pulumi go lima kind kubectl
 
 The absolute quickest way to get started:
 
-**Deploy:**
+**Deploy (interactive, will prompt for passphrase):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash
 ```
 
+**Deploy (non-interactive with passphrase from environment):**
+```bash
+PULUMI_PASSPHRASE="your-passphrase" bash <(curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh)
+```
+
 **Destroy (requires --force flag):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash -s destroy --force
+PULUMI_PASSPHRASE="your-passphrase" bash <(curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh) destroy --force
 ```
 
 **Destroy (interactive with confirmation):**
