@@ -50,14 +50,13 @@ if [[ "$ACTION" == "destroy" ]]; then
         if [[ -n "$PULUMI_PASSPHRASE" ]]; then
             echo "Using passphrase from PULUMI_PASSPHRASE environment variable"
             PASSPHRASE="$PULUMI_PASSPHRASE"
+            echo -n "$PASSPHRASE" > .pulumi-passphrase
+            chmod 600 .pulumi-passphrase
         else
-            echo "Enter your Pulumi passphrase:"
-            read -sp "Passphrase: " PASSPHRASE
-            echo ""
+            echo "❌ No passphrase available and installation directory not found"
+            echo "Cannot destroy without passphrase"
+            exit 1
         fi
-
-        echo -n "$PASSPHRASE" > .pulumi-passphrase
-        chmod 600 .pulumi-passphrase
     fi
 
     export PULUMI_CONFIG_PASSPHRASE_FILE="$INSTALL_DIR/.pulumi-passphrase"
@@ -130,10 +129,10 @@ else
         echo "Using passphrase from PULUMI_PASSPHRASE environment variable"
         PASSPHRASE="$PULUMI_PASSPHRASE"
     else
-        echo "Enter a passphrase for Pulumi state encryption"
-        echo "(This will be saved to .pulumi-passphrase)"
-        read -sp "Passphrase: " PASSPHRASE
-        echo ""
+        # Auto-generate a secure passphrase
+        echo "Generating secure passphrase..."
+        PASSPHRASE=$(openssl rand -base64 32)
+        echo "✅ Generated secure passphrase (saved to .pulumi-passphrase)"
     fi
 
     # Save passphrase
