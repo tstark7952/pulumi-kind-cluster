@@ -48,18 +48,42 @@ brew install pulumi go lima kind kubectl
 
 ## Quick Start
 
+### One-Line Install (Easiest)
+
+The absolute quickest way to get started:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash
+```
+
+This will:
+- Install all dependencies (lima, kind, kubectl, pulumi, go)
+- Clone the repository
+- Set up Pulumi with a secure passphrase
+- Deploy your Kubernetes cluster
+- Configure everything automatically
+
+### Manual Installation
+
 1. **Clone the repository**
    ```bash
    git clone https://github.com/tstark7952/pulumi-kind-cluster.git
    cd pulumi-kind-cluster
    ```
 
-2. **Initialize Pulumi stack**
+2. **Set up Pulumi passphrase**
+   ```bash
+   echo "your-secure-passphrase" > .pulumi-passphrase
+   chmod 600 .pulumi-passphrase
+   export PULUMI_CONFIG_PASSPHRASE_FILE="$(pwd)/.pulumi-passphrase"
+   ```
+
+3. **Initialize Pulumi stack**
    ```bash
    pulumi stack init dev
    ```
 
-3. **Configure resources (optional)**
+4. **Configure resources (optional)**
    ```bash
    pulumi config set cpus 8              # Default: 8
    pulumi config set memory 16           # Default: 16 (GB)
@@ -68,12 +92,12 @@ brew install pulumi go lima kind kubectl
    pulumi config set clusterName myk8s   # Default: myk8s
    ```
 
-4. **Deploy the cluster**
+5. **Deploy the cluster**
    ```bash
    pulumi up
    ```
 
-5. **Use the cluster**
+6. **Use the cluster**
    ```bash
    export KUBECONFIG=~/.kube/myk8s-config
    kubectl get nodes
@@ -83,6 +107,20 @@ brew install pulumi go lima kind kubectl
    ```bash
    source ~/bin/use-k8s.sh
    ```
+
+### GitHub Actions Deployment
+
+You can also deploy directly from GitHub:
+
+1. Go to the **Actions** tab in your forked repository
+2. Select **Deploy Kubernetes Cluster** workflow
+3. Click **Run workflow**
+4. Choose action: `up`, `destroy`, or `preview`
+5. Click **Run workflow**
+
+**Required Secrets:**
+- `PULUMI_ACCESS_TOKEN`: Your Pulumi access token
+- `PULUMI_CONFIG_PASSPHRASE`: Your stack encryption passphrase
 
 ## Configuration
 
