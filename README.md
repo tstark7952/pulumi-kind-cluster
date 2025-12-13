@@ -52,16 +52,23 @@ brew install pulumi go lima kind kubectl
 
 The absolute quickest way to get started:
 
+**Deploy:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash
 ```
 
+**Destroy:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash -s destroy
+```
+
 This will:
 - Install all dependencies (lima, kind, kubectl, pulumi, go)
-- Clone the repository
+- Clone the repository (or use existing installation for destroy)
 - Set up Pulumi with a secure passphrase
-- Deploy your Kubernetes cluster
+- Deploy/destroy your Kubernetes cluster
 - Configure everything automatically
+- Clean up all resources when destroying
 
 ### Manual Installation
 
