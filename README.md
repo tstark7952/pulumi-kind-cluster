@@ -57,9 +57,14 @@ The absolute quickest way to get started:
 curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash
 ```
 
-**Destroy:**
+**Destroy (requires --force flag):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash -s destroy
+curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash -s destroy --force
+```
+
+**Destroy (interactive with confirmation):**
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh) destroy
 ```
 
 This will:

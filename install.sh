@@ -54,14 +54,35 @@ if [[ "$ACTION" == "destroy" ]]; then
 
     export PULUMI_CONFIG_PASSPHRASE_FILE="$INSTALL_DIR/.pulumi-passphrase"
 
-    echo ""
-    echo "⚠️  WARNING: This will destroy your entire Kubernetes cluster!"
-    echo "This action cannot be undone."
-    read -p "Are you sure you want to continue? (yes/no): " CONFIRM
+    # Check if we're in a pipe (non-interactive)
+    if [ -t 0 ]; then
+        # Interactive mode - ask for confirmation
+        echo ""
+        echo "⚠️  WARNING: This will destroy your entire Kubernetes cluster!"
+        echo "This action cannot be undone."
+        read -p "Are you sure you want to continue? (yes/no): " CONFIRM
 
-    if [[ "$CONFIRM" != "yes" ]]; then
-        echo "Destroy cancelled."
-        exit 0
+        if [[ "$CONFIRM" != "yes" ]]; then
+            echo "Destroy cancelled."
+            exit 0
+        fi
+    else
+        # Non-interactive mode (piped) - require --force flag
+        if [[ "$2" != "--force" ]]; then
+            echo ""
+            echo "⚠️  ERROR: Destroying via pipe requires --force flag"
+            echo ""
+            echo "Usage:"
+            echo "  curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash -s destroy --force"
+            echo ""
+            echo "Or run the script directly for interactive confirmation:"
+            echo "  bash <(curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh) destroy"
+            echo ""
+            exit 1
+        fi
+
+        echo ""
+        echo "⚠️  Destroying cluster (--force mode, no confirmation)..."
     fi
 
     echo ""
