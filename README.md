@@ -1,33 +1,126 @@
+<div align="center">
+
 # Kubernetes Local Cluster with Pulumi
+
+### Production-Ready Local K8s Development Environment
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org)
+[![Pulumi](https://img.shields.io/badge/Pulumi-Infrastructure_as_Code-8A3391?logo=pulumi)](https://www.pulumi.com)
+[![Kind](https://img.shields.io/badge/Kind-Kubernetes_in_Docker-326CE5?logo=kubernetes)](https://kind.sigs.k8s.io)
+[![Calico](https://img.shields.io/badge/Calico-v3.29.1-FF6600)](https://www.projectcalico.org)
+[![Platform](https://img.shields.io/badge/Platform-macOS-000000?logo=apple)](https://www.apple.com/macos)
+
+[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Architecture](#architecture) • [Contributing](#contributing)
+
+</div>
+
+---
+
+## 🎯 Overview
 
 A production-ready Pulumi program that automatically provisions a local multi-node Kubernetes cluster on macOS using Lima VM and Kind, complete with Calico CNI networking.
 
-## Overview
+**Perfect for:**
+- 🧪 Local development and testing
+- 🎓 Learning Kubernetes concepts
+- 🔬 Experimenting with K8s features
+- 🚀 CI/CD pipeline testing
+- 📦 Multi-node cluster simulations
 
-This infrastructure-as-code solution creates a fully-functional local Kubernetes development environment with the following features:
+## ✨ Features
 
-- **Multi-node Kind cluster** (1 control-plane + 3 workers)
-- **Lima VM** with Docker support (customizable resources)
-- **Calico CNI** with VXLAN networking
-- **Automatic configuration** of kubeconfig and shell profiles
-- **Auto-start on boot** via macOS launchd
-- **Persistent storage** mounts on all nodes
+<table>
+<tr>
+<td>
 
-## Architecture
+### Infrastructure
+- 🎯 **Multi-node Kind cluster** (1 control-plane + 3 workers)
+- 🖥️ **Lima VM** with Docker (customizable resources)
+- 🌐 **Calico CNI** with VXLAN networking
+- 💾 **Persistent storage** mounts on all nodes
 
+</td>
+<td>
+
+### Automation
+- ⚙️ **Auto-configuration** of kubeconfig and shell
+- 🚀 **Auto-start on boot** via macOS launchd
+- 🔄 **Idempotent deployments** (run multiple times safely)
+- 🧹 **Complete cleanup** with `pulumi destroy`
+
+</td>
+</tr>
+<tr>
+<td>
+
+### Monitoring
+- ✅ **8 comprehensive health checks**
+- 📊 **Detailed diagnostics** after deployment
+- 🔍 **Automatic context switching**
+- 📈 **Cluster verification** tools
+
+</td>
+<td>
+
+### Developer Experience
+- 📦 **One-line installation** script
+- 🎬 **GitHub Actions** deployment
+- 📚 **Extensive documentation**
+- 🛠️ **Helper scripts** for easy access
+
+</td>
+</tr>
+</table>
+
+## 🏗️ Architecture
+
+```mermaid
+graph TB
+    subgraph "macOS Host"
+        subgraph "Lima VM (Ubuntu 24.04 LTS)"
+            Docker[Docker Engine]
+            subgraph "Kind Cluster"
+                CP[Control Plane<br/>NoSchedule Taint]
+                W1[Worker Node 1<br/>/var/lib/disk1]
+                W2[Worker Node 2<br/>/var/lib/disk1]
+                W3[Worker Node 3<br/>/var/lib/disk1]
+            end
+        end
+        CNI[Calico CNI<br/>VXLAN Mode]
+        Storage[Persistent Storage<br/>/tmp/myk8s-*-disk]
+    end
+
+    Docker --> CP
+    Docker --> W1
+    Docker --> W2
+    Docker --> W3
+    CNI -.-> CP
+    CNI -.-> W1
+    CNI -.-> W2
+    CNI -.-> W3
+    Storage --> W1
+    Storage --> W2
+    Storage --> W3
+
+    style CP fill:#326CE5,color:#fff
+    style W1 fill:#326CE5,color:#fff
+    style W2 fill:#326CE5,color:#fff
+    style W3 fill:#326CE5,color:#fff
+    style CNI fill:#FF6600,color:#fff
+    style Docker fill:#2496ED,color:#fff
 ```
-macOS Host
-├── Lima VM (Ubuntu 24.04.3 LTS, VZ driver)
-│   └── Docker Engine
-│       └── Kind Cluster (Kind node images run Debian)
-│           ├── Control Plane Node (tainted)
-│           ├── Worker Node 1
-│           ├── Worker Node 2
-│           └── Worker Node 3
-└── Calico CNI (VXLAN mode)
-```
 
-**Note:** The Lima VM runs **Ubuntu 24.04.3 LTS (Noble Numbat)**. The Kubernetes nodes run inside Kind containers which use Debian-based node images by design. This is standard for Kind and doesn't affect functionality.
+### Stack Details
+
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| 🖥️ Virtualization | Lima (VZ driver) | Latest |
+| 🐳 Container Runtime | Docker Engine | Latest |
+| ☸️ Kubernetes | Kind | Latest |
+| 🌐 CNI | Calico (VXLAN) | v3.29.1 |
+| 🗄️ OS (VM) | Ubuntu LTS | 24.04.3 |
+| 🗄️ OS (Nodes) | Debian | Kind Default |
 
 ## Prerequisites
 
@@ -46,11 +139,11 @@ macOS Host
 brew install pulumi go lima kind kubectl
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
-### One-Line Install (Easiest)
+### ⚡ One-Line Install (Recommended)
 
-The absolute quickest way to get started:
+Get up and running in under 5 minutes:
 
 **Deploy (auto-generates secure passphrase):**
 ```bash
@@ -139,16 +232,25 @@ You can also deploy directly from GitHub:
 - `PULUMI_ACCESS_TOKEN`: Your Pulumi access token
 - `PULUMI_CONFIG_PASSPHRASE`: Your stack encryption passphrase
 
-## Configuration
+## ⚙️ Configuration
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `vmName` | Name of the Lima VM | `myk8s-docker` |
-| `cpus` | Number of CPUs for the VM | `8` |
-| `memory` | Memory in GB for the VM | `16` |
-| `disk` | Disk size in GB for the VM | `500` |
-| `clusterName` | Name of the Kind cluster | `myk8s` |
-| `calicoVersion` | Calico CNI version to install | `v3.29.1` |
+Customize your cluster with these parameters:
+
+| Parameter | Description | Default | Range |
+|-----------|-------------|---------|-------|
+| `vmName` | Name of the Lima VM | `myk8s-docker` | Any valid name |
+| `cpus` | Number of CPUs for the VM | `8` | 2-16+ |
+| `memory` | Memory in GB for the VM | `16` | 4-64+ |
+| `disk` | Disk size in GB for the VM | `500` | 50-2000+ |
+| `clusterName` | Name of the Kind cluster | `myk8s` | Any valid name |
+| `calicoVersion` | Calico CNI version | `v3.29.1` | Any Calico release |
+
+**Example:**
+```bash
+pulumi config set cpus 16
+pulumi config set memory 32
+pulumi config set disk 1000
+```
 
 ## What Gets Created
 
