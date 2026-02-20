@@ -1,472 +1,94 @@
-<div align="center">
+# pulumi-kind-cluster
 
-# Kubernetes Local Cluster with Pulumi
+Pulumi program that provisions a multi-node Kind cluster inside a Lima VM on macOS. Handles the full stack — VM creation, Docker context, Kind cluster, Calico CNI, kubeconfig, and launchd auto-start — in a single `pulumi up`.
 
-### Production-Ready Local K8s Development Environment
+**What gets created:** Lima VM (Ubuntu 24.04, VZ driver) → Docker → Kind (1 control-plane + 3 workers) → Calico CNI (VXLAN) → persistent storage mounts per node
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org)
-[![Pulumi](https://img.shields.io/badge/Pulumi-Infrastructure_as_Code-8A3391?logo=pulumi)](https://www.pulumi.com)
-[![Kind](https://img.shields.io/badge/Kind-Kubernetes_in_Docker-326CE5?logo=kubernetes)](https://kind.sigs.k8s.io)
-[![Calico](https://img.shields.io/badge/Calico-v3.29.1-FF6600)](https://www.projectcalico.org)
-[![Platform](https://img.shields.io/badge/Platform-macOS-000000?logo=apple)](https://www.apple.com/macos)
-
-[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Architecture](#architecture) • [Contributing](#contributing)
-
-</div>
-
----
-
-## 🎯 Overview
-
-A production-ready Pulumi program that automatically provisions a local multi-node Kubernetes cluster on macOS using Lima VM and Kind, complete with Calico CNI networking.
-
-**Perfect for:**
-- 🧪 Local development and testing
-- 🎓 Learning Kubernetes concepts
-- 🔬 Experimenting with K8s features
-- 🚀 CI/CD pipeline testing
-- 📦 Multi-node cluster simulations
-
-## ✨ Features
-
-<table>
-<tr>
-<td>
-
-### Infrastructure
-- 🎯 **Multi-node Kind cluster** (1 control-plane + 3 workers)
-- 🖥️ **Lima VM** with Docker (customizable resources)
-- 🌐 **Calico CNI** with VXLAN networking
-- 💾 **Persistent storage** mounts on all nodes
-
-</td>
-<td>
-
-### Automation
-- ⚙️ **Auto-configuration** of kubeconfig and shell
-- 🚀 **Auto-start on boot** via macOS launchd
-- 🔄 **Idempotent deployments** (run multiple times safely)
-- 🧹 **Complete cleanup** with `pulumi destroy`
-
-</td>
-</tr>
-<tr>
-<td>
-
-### Monitoring
-- ✅ **8 comprehensive health checks**
-- 📊 **Detailed diagnostics** after deployment
-- 🔍 **Automatic context switching**
-- 📈 **Cluster verification** tools
-
-</td>
-<td>
-
-### Developer Experience
-- 📦 **One-line installation** script
-- 🎬 **GitHub Actions** deployment
-- 📚 **Extensive documentation**
-- 🛠️ **Helper scripts** for easy access
-
-</td>
-</tr>
-</table>
-
-## 🏗️ Architecture
-
-```mermaid
-graph TB
-    subgraph "macOS Host"
-        subgraph "Lima VM (Ubuntu 24.04 LTS)"
-            Docker[Docker Engine]
-            subgraph "Kind Cluster"
-                CP[Control Plane<br/>NoSchedule Taint]
-                W1[Worker Node 1<br/>/var/lib/disk1]
-                W2[Worker Node 2<br/>/var/lib/disk1]
-                W3[Worker Node 3<br/>/var/lib/disk1]
-            end
-        end
-        CNI[Calico CNI<br/>VXLAN Mode]
-        Storage[Persistent Storage<br/>/tmp/myk8s-*-disk]
-    end
-
-    Docker --> CP
-    Docker --> W1
-    Docker --> W2
-    Docker --> W3
-    CNI -.-> CP
-    CNI -.-> W1
-    CNI -.-> W2
-    CNI -.-> W3
-    Storage --> W1
-    Storage --> W2
-    Storage --> W3
-
-    style CP fill:#326CE5,color:#fff
-    style W1 fill:#326CE5,color:#fff
-    style W2 fill:#326CE5,color:#fff
-    style W3 fill:#326CE5,color:#fff
-    style CNI fill:#FF6600,color:#fff
-    style Docker fill:#2496ED,color:#fff
-```
-
-### Stack Details
-
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| 🖥️ Virtualization | Lima (VZ driver) | Latest |
-| 🐳 Container Runtime | Docker Engine | Latest |
-| ☸️ Kubernetes | Kind | Latest |
-| 🌐 CNI | Calico (VXLAN) | v3.29.1 |
-| 🗄️ OS (VM) | Ubuntu LTS | 24.04.3 |
-| 🗄️ OS (Nodes) | Debian | Kind Default |
-
-## Prerequisites
-
-- macOS with Apple Silicon or Intel
-- [Homebrew](https://brew.sh/)
-- [Pulumi CLI](https://www.pulumi.com/docs/get-started/install/)
-- Go 1.24+
-- Lima
-- Kind
-- kubectl
-
-### Installation
+## Requirements
 
 ```bash
-# Install prerequisites via Homebrew
 brew install pulumi go lima kind kubectl
 ```
 
-## 🚀 Quick Start
+## Deploy
 
-### ⚡ One-Line Install (Recommended)
-
-Get up and running in under 5 minutes:
-
-**Deploy (auto-generates secure passphrase):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh | bash
+git clone https://github.com/justin-oleary/pulumi-kind-cluster.git
+cd pulumi-kind-cluster
+
+echo "your-passphrase" > .pulumi-passphrase
+export PULUMI_CONFIG_PASSPHRASE_FILE="$(pwd)/.pulumi-passphrase"
+
+pulumi stack init dev
+pulumi up
 ```
 
-**Deploy (with custom passphrase from environment):**
+Or one-liner:
+
 ```bash
-PULUMI_PASSPHRASE="your-passphrase" bash <(curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh)
+curl -fsSL https://raw.githubusercontent.com/justin-oleary/pulumi-kind-cluster/main/install.sh | bash
 ```
 
-**Destroy (requires --force flag):**
+## Use
+
 ```bash
-PULUMI_PASSPHRASE="your-passphrase" bash <(curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh) destroy --force
+export KUBECONFIG=~/.kube/myk8s-config
+kubectl get nodes
+kubectl -n kube-system get pods
 ```
 
-**Destroy (interactive with confirmation):**
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/tstark7952/pulumi-kind-cluster/main/install.sh) destroy
-```
-
-This will:
-- Install all dependencies (lima, kind, kubectl, pulumi, go)
-- Clone the repository (or use existing installation for destroy)
-- Set up Pulumi with a secure passphrase
-- Deploy/destroy your Kubernetes cluster
-- Configure everything automatically
-- Clean up all resources when destroying
-
-### Manual Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/tstark7952/pulumi-kind-cluster.git
-   cd pulumi-kind-cluster
-   ```
-
-2. **Set up Pulumi passphrase**
-   ```bash
-   echo "your-secure-passphrase" > .pulumi-passphrase
-   chmod 600 .pulumi-passphrase
-   export PULUMI_CONFIG_PASSPHRASE_FILE="$(pwd)/.pulumi-passphrase"
-   ```
-
-3. **Initialize Pulumi stack**
-   ```bash
-   pulumi stack init dev
-   ```
-
-4. **Configure resources (optional)**
-   ```bash
-   pulumi config set cpus 8              # Default: 8
-   pulumi config set memory 16           # Default: 16 (GB)
-   pulumi config set disk 500            # Default: 500 (GB)
-   pulumi config set vmName myk8s-docker # Default: myk8s-docker
-   pulumi config set clusterName myk8s   # Default: myk8s
-   ```
-
-5. **Deploy the cluster**
-   ```bash
-   pulumi up
-   ```
-
-6. **Use the cluster**
-   ```bash
-   export KUBECONFIG=~/.kube/myk8s-config
-   kubectl get nodes
-   ```
-
-   Or use the helper script:
-   ```bash
-   source ~/bin/use-k8s.sh
-   ```
-
-### GitHub Actions Deployment
-
-You can also deploy directly from GitHub:
-
-1. Go to the **Actions** tab in your forked repository
-2. Select **Deploy Kubernetes Cluster** workflow
-3. Click **Run workflow**
-4. Choose action: `up`, `destroy`, or `preview`
-5. Click **Run workflow**
-
-**Required Secrets:**
-- `PULUMI_ACCESS_TOKEN`: Your Pulumi access token
-- `PULUMI_CONFIG_PASSPHRASE`: Your stack encryption passphrase
-
-## ⚙️ Configuration
-
-Customize your cluster with these parameters:
-
-| Parameter | Description | Default | Range |
-|-----------|-------------|---------|-------|
-| `vmName` | Name of the Lima VM | `myk8s-docker` | Any valid name |
-| `cpus` | Number of CPUs for the VM | `8` | 2-16+ |
-| `memory` | Memory in GB for the VM | `16` | 4-64+ |
-| `disk` | Disk size in GB for the VM | `500` | 50-2000+ |
-| `clusterName` | Name of the Kind cluster | `myk8s` | Any valid name |
-| `calicoVersion` | Calico CNI version | `v3.29.1` | Any Calico release |
-
-**Example:**
-```bash
-pulumi config set cpus 16
-pulumi config set memory 32
-pulumi config set disk 1000
-```
-
-## What Gets Created
-
-The Pulumi program creates the following resources:
-
-1. **Directories** - Mount points for persistent storage (`/tmp/myk8s-*-disk`)
-2. **Kind Config** - Cluster configuration with extra mounts and disabled default CNI
-3. **Lima VM** - Virtual machine with Docker, using macOS Virtualization framework
-4. **launchd Service** - Auto-starts the VM on macOS boot
-5. **Docker Context** - Configured to use Lima VM's Docker socket
-6. **Kind Cluster** - 4-node Kubernetes cluster
-7. **Kubeconfig** - Exported and configured for kubectl access
-8. **Shell Profiles** - Updated `.zshrc` and `.bashrc` with KUBECONFIG
-9. **Calico CNI** - Networking layer with VXLAN encapsulation
-10. **Control Plane Taint** - NoSchedule taint on control-plane node
-11. **Helper Script** - `~/bin/use-k8s.sh` for easy cluster activation
-
-## Features
-
-### Idempotent Deployments
-
-The infrastructure is fully idempotent - you can run `pulumi up` multiple times safely:
-- Detects existing Lima VMs and reuses them
-- Checks for existing Kind clusters before creation
-- Handles partial failures gracefully with retry logic
-- VM startup waits with timeout and retry mechanisms
-
-### Comprehensive Health Checks
-
-After deployment, the system runs 8 comprehensive health checks:
-1. Lima VM status verification
-2. Docker connectivity test
-3. Kind cluster existence check
-4. Kubernetes API connectivity
-5. Node readiness status
-6. System pods health
-7. Calico CNI verification
-8. CoreDNS health check
-
-Each check provides clear PASS/WARN/FAIL status with detailed diagnostics.
-
-### Automatic Context Switching
-
-The deployment automatically configures and switches to the correct contexts:
-- **Docker context** - Automatically set to `lima-myk8s-docker` via `DOCKER_CONTEXT` environment variable
-- **kubectl context** - Automatically set to `kind-myk8s`
-
-Both contexts are persisted in your shell profiles (`.zshrc`, `.bashrc`), so new terminal sessions will automatically use the correct contexts.
-
-To activate in your current shell:
-```bash
-source ~/bin/use-k8s.sh
-# or
-source ~/.zshrc  # or ~/.bashrc
-```
-
-### Complete Cleanup
-
-All resources have proper deletion handlers. To destroy the entire infrastructure:
+## Destroy
 
 ```bash
 pulumi destroy
 ```
 
-This will completely remove:
-- Kind cluster
-- Lima VM and all associated files
-- launchd service
-- Docker context (`lima-myk8s-docker`)
-- kubectl context, cluster, and user entries (`kind-myk8s`)
-- Kubeconfig files and symlinks
-- Shell profile entries (KUBECONFIG exports)
-- Helper scripts (`~/bin/use-k8s.sh`)
+Removes the Kind cluster, Lima VM, launchd service, Docker context, kubectl context, kubeconfig entries, and shell profile changes. Clean slate.
 
-After `pulumi destroy`, your system is restored to its original state with no leftover configurations.
+## Configuration
 
-### Persistent Storage
-
-Each node has a dedicated mount point for persistent data:
-- Control plane: `/tmp/myk8s-control-disk` → `/var/lib/disk1`
-- Worker 1: `/tmp/myk8s-worker1-disk` → `/var/lib/disk1`
-- Worker 2: `/tmp/myk8s-worker2-disk` → `/var/lib/disk1`
-- Worker 3: `/tmp/myk8s-worker3-disk` → `/var/lib/disk1`
-
-### Calico Networking
-
-The cluster uses Calico CNI with VXLAN overlay networking:
-- VXLAN encapsulation enabled
-- IPIP mode disabled
-- Automatic pod-to-pod communication across nodes
-
-## Verification
-
-After deployment, verify your cluster:
+| Parameter | Default | Description |
+|---|---|---|
+| `vmName` | `myk8s-docker` | Lima VM name |
+| `cpus` | `8` | VM CPU count |
+| `memory` | `16` | VM memory in GB |
+| `disk` | `500` | VM disk in GB |
+| `clusterName` | `myk8s` | Kind cluster name |
+| `calicoVersion` | `v3.29.1` | Calico CNI version |
 
 ```bash
-# Check cluster info
-kubectl cluster-info
-
-# View nodes
-kubectl get nodes -o wide
-
-# Check system pods
-kubectl -n kube-system get pods
-
-# Verify Calico
-kubectl -n kube-system get pods -l k8s-app=calico-node
+pulumi config set cpus 16
+pulumi config set memory 32
 ```
 
 ## Troubleshooting
 
-### Cluster not accessible
-
-If kubectl cannot connect:
+**Cluster not reachable:**
 
 ```bash
-# Verify the cluster exists in Lima
+# verify cluster exists inside Lima
 DOCKER_HOST=unix://$HOME/.lima/myk8s-docker/sock/docker.sock kind get clusters
 
-# Re-export kubeconfig
+# re-export kubeconfig
 kind export kubeconfig --name myk8s --kubeconfig ~/.kube/myk8s-config
-
-# Set KUBECONFIG
-export KUBECONFIG=~/.kube/myk8s-config
 ```
 
-### Lima VM not starting
+**Lima VM not starting:**
 
 ```bash
-# Check VM status
 limactl list
-
-# View VM logs
-limactl shell myk8s-docker
-
-# Restart VM
-limactl stop myk8s-docker
-limactl start myk8s-docker
+limactl stop myk8s-docker && limactl start myk8s-docker
 ```
 
-### Docker context issues
+**Docker context broken:**
 
 ```bash
-# Reset Docker context
-docker context use default
 docker context rm lima-myk8s-docker
-docker context create lima-myk8s-docker --docker "host=unix://$HOME/.lima/myk8s-docker/sock/docker.sock"
+docker context create lima-myk8s-docker \
+  --docker "host=unix://$HOME/.lima/myk8s-docker/sock/docker.sock"
 docker context use lima-myk8s-docker
 ```
 
-## Development
-
-### Project Structure
-
-```
-.
-├── main.go           # Main Pulumi program
-├── go.mod            # Go module dependencies
-├── go.sum            # Dependency checksums
-├── Pulumi.yaml       # Pulumi project configuration
-├── README.md         # This file
-├── LICENSE           # MIT License
-└── .gitignore        # Git ignore rules
-```
-
-### Modifying the Cluster
-
-To change cluster configuration:
-
-1. Edit `main.go` to modify the Kind config or add resources
-2. Run `pulumi preview` to see planned changes
-3. Run `pulumi up` to apply changes
-
-### Adding Additional Nodes
-
-Edit the `kindConfig` variable in `main.go`:
-
-```go
-- role: worker
-  extraMounts:
-  - hostPath: /tmp/myk8s-worker4-disk
-    containerPath: /var/lib/disk1
-```
-
-## Stack Outputs
-
-The Pulumi stack exports:
-
-- `clusterName`: Name of the Kubernetes cluster
-- `kubeconfigPath`: Path to the kubeconfig file
-
-Access outputs:
-
-```bash
-pulumi stack output clusterName
-pulumi stack output kubeconfigPath
-```
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [Pulumi](https://www.pulumi.com/) - Infrastructure as Code platform
-- [Lima](https://lima-vm.io/) - Linux virtual machines on macOS
-- [Kind](https://kind.sigs.k8s.io/) - Kubernetes in Docker
-- [Calico](https://www.projectcalico.org/) - Cloud native networking and security
-
-## Resources
-
-- [Pulumi Documentation](https://www.pulumi.com/docs/)
-- [Kind Documentation](https://kind.sigs.k8s.io/docs/)
-- [Lima Documentation](https://lima-vm.io/docs/)
-- [Calico Documentation](https://docs.projectcalico.org/)
+MIT
